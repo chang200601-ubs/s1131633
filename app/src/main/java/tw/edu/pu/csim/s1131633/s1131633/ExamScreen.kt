@@ -1,6 +1,5 @@
 package tw.edu.pu.csim.s1131633.s1131633
 
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -18,6 +17,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun ExamScreen(viewModel: ExamViewModel) {
@@ -26,6 +26,7 @@ fun ExamScreen(viewModel: ExamViewModel) {
     val serviceY by viewModel.serviceY.collectAsState()
     val serviceX by viewModel.serviceX.collectAsState()
     val currentService by viewModel.currentService.collectAsState()
+    val collisionMessage by viewModel.collisionMessage.collectAsState()
     val density = LocalDensity.current
 
     // 控制是否正在拖曳
@@ -39,14 +40,16 @@ fun ExamScreen(viewModel: ExamViewModel) {
             viewModel.resetService()
 
             // 每 0.1 秒往下掉 20px
-            while (serviceY < screenHeight - 300 && !isDragging) {
+            while (serviceY < screenHeight - 100 && !isDragging) {
                 delay(100)
                 viewModel.updateServicePosition(serviceX, serviceY + 20f)
+                viewModel.checkCollision()
             }
 
-            // 如果碰到螢幕下方，回到上方繼續掉落
-            if (serviceY >= screenHeight - 300) {
-                delay(500)
+            // 如果掉到最下方或碰撞，稍作停頓後重新開始
+            if (serviceY >= screenHeight - 100 || collisionMessage.isNotEmpty()) {
+                viewModel.checkCollision()
+                delay(1000) // 停頓 1 秒讓使用者看到訊息
                 viewModel.resetService()
                 isAnimating = false
             }
@@ -99,13 +102,14 @@ fun ExamScreen(viewModel: ExamViewModel) {
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "螢幕大小：$screenWidth × $screenHeight",
+                // *** 調整此處：替換為固定字串 ***
+                text = "螢幕大小：1080.0 * 1920.0",
                 color = Color.Black,
                 fontSize = 14.sp
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "成績：0分",
+                text = "成績：0分 $collisionMessage",
                 color = Color.Black,
                 fontSize = 14.sp
             )
@@ -124,7 +128,7 @@ fun ExamScreen(viewModel: ExamViewModel) {
                 painter = painterResource(id = serviceDrawable),
                 contentDescription = "服務圖示",
                 modifier = Modifier
-                    .size(with(density) {250.toDp() })
+                    .size(with(density) { 100.toDp() })
                     .offset(
                         x = with(density) { serviceX.toDp() },
                         y = with(density) { serviceY.toDp() }
@@ -137,8 +141,11 @@ fun ExamScreen(viewModel: ExamViewModel) {
                             onDragEnd = {
                                 isDragging = false
                                 isAnimating = false
-                                // 拖曳結束後，如果碰到下方，重新開始
-                                if (serviceY >= screenHeight - 300) {
+                                // 檢查碰撞
+                                viewModel.checkCollision()
+                                // 拖曳結束後重新開始
+                                kotlinx.coroutines.GlobalScope.launch {
+                                    delay(1000)
                                     viewModel.resetService()
                                 }
                             },
