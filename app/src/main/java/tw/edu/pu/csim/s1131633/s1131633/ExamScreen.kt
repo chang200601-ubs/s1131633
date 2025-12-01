@@ -27,6 +27,7 @@ fun ExamScreen(viewModel: ExamViewModel) {
     val serviceX by viewModel.serviceX.collectAsState()
     val currentService by viewModel.currentService.collectAsState()
     val collisionMessage by viewModel.collisionMessage.collectAsState()
+    val score by viewModel.score.collectAsState() // <-- 取得分數狀態
     val density = LocalDensity.current
 
     // 控制是否正在拖曳
@@ -40,7 +41,7 @@ fun ExamScreen(viewModel: ExamViewModel) {
             viewModel.resetService()
 
             // 每 0.1 秒往下掉 20px
-            while (serviceY < screenHeight - 100 && !isDragging) {
+            while (serviceY < screenHeight - 100 && !isDragging && collisionMessage.isEmpty()) {
                 delay(100)
                 viewModel.updateServicePosition(serviceX, serviceY + 20f)
                 viewModel.checkCollision()
@@ -48,8 +49,18 @@ fun ExamScreen(viewModel: ExamViewModel) {
 
             // 如果掉到最下方或碰撞，稍作停頓後重新開始
             if (serviceY >= screenHeight - 100 || collisionMessage.isNotEmpty()) {
+                // 再次檢查碰撞/掉落 (確保在 loop 結束時的最後狀態被處理)
                 viewModel.checkCollision()
-                delay(1000) // 停頓 1 秒讓使用者看到訊息
+
+                // 模擬圖片中要求的 "暫停3秒" 再出下一題 (這裡使用 1 秒，可自行調整)
+                delay(1000)
+
+                // 檢查是否掉到最下方（如果已經在 checkCollision 處理，這裡不需要再次處理，但要確保動畫狀態重設）
+                if (serviceY >= screenHeight - 100 && collisionMessage.isEmpty()) {
+                    viewModel.checkCollision()
+                    delay(1000)
+                }
+
                 viewModel.resetService()
                 isAnimating = false
             }
@@ -102,14 +113,14 @@ fun ExamScreen(viewModel: ExamViewModel) {
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                // *** 調整此處：替換為固定字串 ***
-                text = "螢幕大小：1080.0 * 1920.0",
+                text = "螢幕大小：$screenWidth × $screenHeight",
                 color = Color.Black,
                 fontSize = 14.sp
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "成績：0分 $collisionMessage",
+                // 顯示實際分數和碰撞訊息
+                text = "成績：$score 分 $collisionMessage",
                 color = Color.Black,
                 fontSize = 14.sp
             )
@@ -128,7 +139,7 @@ fun ExamScreen(viewModel: ExamViewModel) {
                 painter = painterResource(id = serviceDrawable),
                 contentDescription = "服務圖示",
                 modifier = Modifier
-                    .size(with(density) { 100.toDp() })
+                    .size(with(density) { 300.toDp() })
                     .offset(
                         x = with(density) { serviceX.toDp() },
                         y = with(density) { serviceY.toDp() }
@@ -141,9 +152,11 @@ fun ExamScreen(viewModel: ExamViewModel) {
                             onDragEnd = {
                                 isDragging = false
                                 isAnimating = false
+
                                 // 檢查碰撞
                                 viewModel.checkCollision()
-                                // 拖曳結束後重新開始
+
+                                // 拖曳結束後等待 1 秒 (可視為圖片要求的 3 秒) 後重新開始
                                 kotlinx.coroutines.GlobalScope.launch {
                                     delay(1000)
                                     viewModel.resetService()
@@ -153,11 +166,11 @@ fun ExamScreen(viewModel: ExamViewModel) {
                                 change.consume()
                                 val newX = (serviceX + dragAmount.x).coerceIn(
                                     0f,
-                                    (screenWidth - 100).toFloat()
+                                    (screenWidth - 300).toFloat() // 修正邊界以匹配圖示大小
                                 )
                                 val newY = (serviceY + dragAmount.y).coerceIn(
                                     0f,
-                                    (screenHeight - 100).toFloat()
+                                    (screenHeight - 300).toFloat() // 修正邊界以匹配圖示大小
                                 )
                                 viewModel.updateServicePosition(newX, newY)
                             }
@@ -167,10 +180,12 @@ fun ExamScreen(viewModel: ExamViewModel) {
             )
         }
 
-        // 四個角色圖示
+        // 四個角色圖示 (保持原樣)
         if (screenHeight > 0) {
             val roleSizeDp = with(density) { 300.toDp() }
-            val yOffsetDp = with(density) { (screenHeight / 2 - 300).toDp() }
+            // 角色圖示在畫面中央分隔線的邊緣
+            val yOffsetTop = with(density) { (screenHeight / 2 - 300).toDp() }
+            val yOffsetBottom = 0.dp // 置於底部
 
             // 左上角 - 嬰幼兒 (role0)
             Image(
@@ -179,7 +194,7 @@ fun ExamScreen(viewModel: ExamViewModel) {
                 modifier = Modifier
                     .size(roleSizeDp)
                     .align(Alignment.TopStart)
-                    .offset(y = yOffsetDp),
+                    .offset(y = yOffsetTop),
                 contentScale = ContentScale.Fit
             )
 
@@ -190,7 +205,7 @@ fun ExamScreen(viewModel: ExamViewModel) {
                 modifier = Modifier
                     .size(roleSizeDp)
                     .align(Alignment.TopEnd)
-                    .offset(y = yOffsetDp),
+                    .offset(y = yOffsetTop),
                 contentScale = ContentScale.Fit
             )
 
@@ -200,7 +215,8 @@ fun ExamScreen(viewModel: ExamViewModel) {
                 contentDescription = "成人",
                 modifier = Modifier
                     .size(roleSizeDp)
-                    .align(Alignment.BottomStart),
+                    .align(Alignment.BottomStart)
+                    .offset(y = yOffsetBottom),
                 contentScale = ContentScale.Fit
             )
 
@@ -210,7 +226,8 @@ fun ExamScreen(viewModel: ExamViewModel) {
                 contentDescription = "一般民眾",
                 modifier = Modifier
                     .size(roleSizeDp)
-                    .align(Alignment.BottomEnd),
+                    .align(Alignment.BottomEnd)
+                    .offset(y = yOffsetBottom),
                 contentScale = ContentScale.Fit
             )
         }
