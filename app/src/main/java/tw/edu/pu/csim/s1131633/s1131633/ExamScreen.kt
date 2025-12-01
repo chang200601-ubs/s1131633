@@ -1,25 +1,57 @@
 package tw.edu.pu.csim.s1131633.s1131633
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 
 @Composable
 fun ExamScreen(viewModel: ExamViewModel) {
     val screenWidth by viewModel.screenWidth.collectAsState()
     val screenHeight by viewModel.screenHeight.collectAsState()
+    val serviceY by viewModel.serviceY.collectAsState()
+    val serviceX by viewModel.serviceX.collectAsState()
+    val currentService by viewModel.currentService.collectAsState()
     val density = LocalDensity.current
+
+    // 控制是否正在拖曳
+    var isDragging by remember { mutableStateOf(false) }
+    var isAnimating by remember { mutableStateOf(false) }
+
+    // 啟動掉落動畫
+    LaunchedEffect(screenHeight, isDragging) {
+        if (screenHeight > 0 && !isAnimating && !isDragging) {
+            isAnimating = true
+            viewModel.resetService()
+
+            // 每 0.1 秒往下掉 20px
+            while (serviceY < screenHeight - 300 && !isDragging) {
+                delay(100)
+                viewModel.updateServicePosition(serviceX, serviceY + 20f)
+            }
+
+            // 如果碰到螢幕下方，回到上方繼續掉落
+            if (serviceY >= screenHeight - 300) {
+                delay(500)
+                viewModel.resetService()
+                isAnimating = false
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -67,8 +99,7 @@ fun ExamScreen(viewModel: ExamViewModel) {
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                // *** 調整此處：替換為固定字串 ***
-                text = "螢幕大小：1080.0 * 1920.0",
+                text = "螢幕大小：$screenWidth × $screenHeight",
                 color = Color.Black,
                 fontSize = 14.sp
             )
@@ -80,12 +111,61 @@ fun ExamScreen(viewModel: ExamViewModel) {
             )
         }
 
+        // 掉落的服務圖示（可拖曳）
+        if (screenHeight > 0) {
+            val serviceDrawable = when (currentService) {
+                0 -> R.drawable.service0
+                1 -> R.drawable.service1
+                2 -> R.drawable.service2
+                else -> R.drawable.service3
+            }
+
+            Image(
+                painter = painterResource(id = serviceDrawable),
+                contentDescription = "服務圖示",
+                modifier = Modifier
+                    .size(with(density) {250.toDp() })
+                    .offset(
+                        x = with(density) { serviceX.toDp() },
+                        y = with(density) { serviceY.toDp() }
+                    )
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = {
+                                isDragging = true
+                            },
+                            onDragEnd = {
+                                isDragging = false
+                                isAnimating = false
+                                // 拖曳結束後，如果碰到下方，重新開始
+                                if (serviceY >= screenHeight - 300) {
+                                    viewModel.resetService()
+                                }
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                val newX = (serviceX + dragAmount.x).coerceIn(
+                                    0f,
+                                    (screenWidth - 100).toFloat()
+                                )
+                                val newY = (serviceY + dragAmount.y).coerceIn(
+                                    0f,
+                                    (screenHeight - 100).toFloat()
+                                )
+                                viewModel.updateServicePosition(newX, newY)
+                            }
+                        )
+                    },
+                contentScale = ContentScale.Fit
+            )
+        }
+
         // 四個角色圖示
         if (screenHeight > 0) {
             val roleSizeDp = with(density) { 300.toDp() }
             val yOffsetDp = with(density) { (screenHeight / 2 - 300).toDp() }
 
-            // 左上角 - 嬰幼兒 (role0) - 下方切齊螢幕高度 1/2
+            // 左上角 - 嬰幼兒 (role0)
             Image(
                 painter = painterResource(id = R.drawable.role0),
                 contentDescription = "嬰幼兒",
@@ -96,7 +176,7 @@ fun ExamScreen(viewModel: ExamViewModel) {
                 contentScale = ContentScale.Fit
             )
 
-            // 右上角 - 兒童 (role1) - 下方切齊螢幕高度 1/2
+            // 右上角 - 兒童 (role1)
             Image(
                 painter = painterResource(id = R.drawable.role1),
                 contentDescription = "兒童",
@@ -107,7 +187,7 @@ fun ExamScreen(viewModel: ExamViewModel) {
                 contentScale = ContentScale.Fit
             )
 
-            // 左下角 - 成人 (role2) - 完全貼齊底部
+            // 左下角 - 成人 (role2)
             Image(
                 painter = painterResource(id = R.drawable.role2),
                 contentDescription = "成人",
@@ -117,7 +197,7 @@ fun ExamScreen(viewModel: ExamViewModel) {
                 contentScale = ContentScale.Fit
             )
 
-            // 右下角 - 一般民眾 (role3) - 完全貼齊底部
+            // 右下角 - 一般民眾 (role3)
             Image(
                 painter = painterResource(id = R.drawable.role3),
                 contentDescription = "一般民眾",
